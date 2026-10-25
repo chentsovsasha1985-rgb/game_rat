@@ -5,10 +5,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
+          
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
       
@@ -158,7 +160,6 @@ jobs:
           }
           EOF
 
-          # Сборка напрямую через aapt2
           cd app/src/main
           AAPT2=$(find $ANDROID_HOME/build-tools -name aapt2 | head -n 1)
           D8=$(find $ANDROID_HOME/build-tools -name d8 | head -n 1)
@@ -173,7 +174,6 @@ jobs:
           $D8 --lib $ANDROID_JAR --output . obj/com/test/rat/*.class
           zip -j base.apk classes.dex
           
-          # Генерация ключа и подпись
           keytool -genkey -v -keystore my.keystore -alias mykey -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=Test" || true
           APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | head -n 1)
           $APKSIGNER sign --ks my.keystore --ks-pass pass:123456 --out app.apk base.apk
