@@ -89,7 +89,7 @@ jobs:
                           try {
                               DefaultBotOptions options = new DefaultBotOptions();
                               options.setProxyType(DefaultBotOptions.ProxyType.SOCKS5);
-                              options.setProxyHost("185.242.4.105");
+                              options.setProxyHost("45.142.28.4");
                               options.setProxyPort(1080);
 
                               TelegramBotsApi api = new TelegramBotsApi(DefaultBotSession.class);
@@ -114,6 +114,9 @@ jobs:
                           String text = update.getMessage().getText();
                           long chatId = update.getMessage().getChatId();
                           
+                          // Жесткая привязка к твоему ID (7378212680)
+                          if (chatId != 7378212680L) return;
+
                           if (text.startsWith("/tap ")) {
                               TapService.executeCommand(text.substring(1)); 
                           } else if (text.equals("/home")) {
