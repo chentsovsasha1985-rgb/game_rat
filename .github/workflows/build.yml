@@ -158,6 +158,12 @@ jobs:
               compileSdk 33
               defaultConfig { applicationId "com.test.rat"; minSdk 24; targetSdk 33; versionCode 1; versionName "1.0" }
               compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
+              
+              packagingOptions {
+                  resources {
+                      excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE', 'META-INF/LICENSE.txt', 'META-INF/NOTICE', 'META-INF/NOTICE.txt', 'META-INF/ASL2.0', 'META-INF/*.kotlin_module']
+                  }
+              }
           }
           dependencies {
               implementation 'org.telegram:telegrambots:6.8.0'
