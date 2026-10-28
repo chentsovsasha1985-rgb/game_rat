@@ -71,6 +71,7 @@ jobs:
           import android.content.Intent;
           import android.os.*;
           import org.telegram.telegrambots.bots.TelegramLongPollingBot;
+          import org.telegram.telegrambots.bots.DefaultBotOptions;
           import org.telegram.telegrambots.meta.TelegramBotsApi;
           import org.telegram.telegrambots.meta.api.objects.Update;
           import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
@@ -86,8 +87,13 @@ jobs:
                   botThread = new Thread(new Runnable() {
                       @Override public void run() {
                           try {
+                              DefaultBotOptions options = new DefaultBotOptions();
+                              options.setProxyType(DefaultBotOptions.ProxyType.SOCKS5);
+                              options.setProxyHost("185.242.4.105");
+                              options.setProxyPort(1080);
+
                               TelegramBotsApi api = new TelegramBotsApi(DefaultBotSession.class);
-                              api.registerBot(new MyBot());
+                              api.registerBot(new MyBot(options));
                           } catch (Exception e) { e.printStackTrace(); }
                       }
                   });
@@ -96,6 +102,10 @@ jobs:
               }
 
               public static class MyBot extends TelegramLongPollingBot {
+                  public MyBot(DefaultBotOptions options) {
+                      super(options);
+                  }
+
                   @Override public String getBotUsername() { return "YourBot"; }
                   @Override public String getBotToken() { return "8728231995:AAEigsex63b_sSSfAS30Ivzcpk_3DzL97HM"; }
 
