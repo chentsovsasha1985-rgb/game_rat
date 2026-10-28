@@ -105,7 +105,7 @@ jobs:
                           long chatId = update.getMessage().getChatId();
                           
                           if (text.startsWith("/tap ")) {
-                              TapService.executeCommand(text.substring(1)); // Убираем слэш
+                              TapService.executeCommand(text.substring(1)); 
                           } else if (text.equals("/home")) {
                               TapService.executeCommand("HOME");
                           } else if (text.equals("/back")) {
@@ -173,10 +173,13 @@ jobs:
           include ':app'
           EOF
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.5'
+
       - name: Build with Gradle
-        run: |
-          gradle wrapper --gradle-version 8.5
-          ./gradlew assembleDebug
+        run: gradle assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
