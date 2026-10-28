@@ -74,7 +74,6 @@ jobs:
           import org.telegram.telegrambots.meta.TelegramBotsApi;
           import org.telegram.telegrambots.meta.api.objects.Update;
           import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
-          import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
           import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
           public class BotService extends Service {
@@ -128,7 +127,6 @@ jobs:
           import android.accessibilityservice.*;
           import android.view.accessibility.AccessibilityEvent;
           import android.graphics.Path;
-          import android.accessibilityservice.AccessibilityService.GlobalAction;
 
           public class TapService extends AccessibilityService {
               public static TapService instance;
@@ -177,7 +175,7 @@ jobs:
 
       - name: Build with Gradle
         run: |
-          gradle wrapper
+          gradle wrapper --gradle-version 8.5
           ./gradlew assembleDebug
 
       - name: Upload APK
