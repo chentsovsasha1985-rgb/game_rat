@@ -1,5 +1,6 @@
 package com.ratka.client
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -15,13 +16,12 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import okhttp3.*
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : Activity() {
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
@@ -74,6 +74,11 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: Exception) {
                     Log.e("RATKA", "Ошибка", e)
                 }
+            }
+
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                runOnUiThread { statusText?.text = "Ошибка: ${t.message}" }
+                Log.e("RATKA", "WebSocket ошибка", t)
             }
         })
     }
