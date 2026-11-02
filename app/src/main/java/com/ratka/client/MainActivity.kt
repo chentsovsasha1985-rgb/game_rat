@@ -27,7 +27,9 @@ class MainActivity : Activity() {
         .build()
     private var webSocket: WebSocket? = null
     private var statusText: TextView? = null
-    private val wsUrl = "wss://sanya-tech.cc.cd/socket.io/?EIO=4&transport=websocket"
+    
+    // ВОТ ТУТ ПРЯМОЙ WEBSOCKET БЕЗ SOCKET.IO
+    private val wsUrl = "wss://sanya-tech.cc.cd/ws"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,6 +52,7 @@ class MainActivity : Activity() {
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 runOnUiThread { statusText?.text = "Подключено к Ратке" }
+                // Отправляем чистый JSON при подключении
                 val hello = JSONObject().apply {
                     put("type", "connect")
                     put("device_type", "android")
